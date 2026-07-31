@@ -1,0 +1,19 @@
+[package]
+name = "cjson-rs"
+version = "0.1.0"
+edition = "2024"
+description = "A safe Rust port of cJSON's JSON parser and utility layer"
+license = "MIT"
+
+[lib]
+name = "cjson_rs"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cjson-rs"
+path = "src/main.rs"
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true
