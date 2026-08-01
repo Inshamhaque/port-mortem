@@ -86,6 +86,16 @@ This file is maintained incrementally as the port progresses.
 - **Why:** cJSON's minifier is a textual filter; mirroring it keeps behavior identical, including
   the C implementation's `//` and `/* ... */` comment-removal extension and its lone-slash handling.
 
+### D10 — Mutation layer maps to typed helpers, not cJSON's raw pointers
+- **Status:** decided, `src/mutate.rs` implemented (23 unit tests green)
+- **What:** A typed, fallible mutation API replacing the cJSON `cJSON_Add*ToObject`,
+  `cJSON_Add*ToArray`, `cJSON_DeleteItem*`, `cJSON_Detach*`, `cJSON_InsertItem*`,
+  `cJSON_ReplaceItem*`, and `cJSON_Set*` equivalents, plus a `MutationError`.
+- **Why:** cJSON mutates a linked tree through raw `cJSON*` pointers and can fail silently or leak.
+  The port instead exposes operations over owned [`Value`]s that return `Result<_, MutationError>`,
+  keeping failure explicit and safety compile-time. Reference-style adds clone rather than alias, so
+  no ownership is ever shared unsafely.
+
 ---
 
 ## Open / to be decided
@@ -93,6 +103,5 @@ This file is maintained incrementally as the port progresses.
 - How the C test harness (Unity `TEST_ASSERT_*`) maps onto Rust `#[test]` without editing the
   original `.c` files (likely a translation layer under `tests/port/`).
 - Printer (`print`/`print_unformatted`) — cJSON's `cJSON_Print`/`cJSON_PrintUnformatted`.
-- Mutation, JSON Pointer/Patch, and the `utils` helpers — described in the `lib.rs` docs but not
-  yet built.
+- JSON Pointer/Patch and the `utils` helpers — described in the `lib.rs` docs but not yet built.
 - `src/main.rs` for the CLI binary declared in `Cargo.toml`.
