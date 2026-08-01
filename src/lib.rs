@@ -10,6 +10,7 @@ mod parser;
 mod value;
 mod minify;
 mod mutate;
+mod utils;
 
 pub use error::Error;
 pub use value::{
@@ -22,6 +23,12 @@ pub use mutate::{
     add_raw_to_object, add_string_to_object, delete_from_array, delete_from_object, detach_from_array,
     detach_from_object, insert_in_array, replace_in_array, replace_in_object, set_bool, set_number,
     set_string, MutationError,
+};
+pub use utils::{
+    add_patch_to_array, apply_patches, apply_patches_case_sensitive, delete_pointer, find_pointer_from_object_to,
+    generate_merge_patch, generate_merge_patch_case_sensitive, generate_patches, generate_patches_case_sensitive,
+    get_pointer, get_pointer_case_sensitive, merge_patch, merge_patch_case_sensitive, sort_object,
+    sort_object_case_sensitive, PatchError,
 };
 pub use parser::parse;
 pub use minify::minify;

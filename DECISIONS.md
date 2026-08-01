@@ -96,6 +96,16 @@ This file is maintained incrementally as the port progresses.
   keeping failure explicit and safety compile-time. Reference-style adds clone rather than alias, so
   no ownership is ever shared unsafely.
 
+### D11 — JSON Pointer / Patch / merge patch return errors, not codes-as-pointers
+- **Status:** decided, `src/utils.rs` implemented (34 unit tests green)
+- **What:** A `PatchError(u32)` carrying cJSON's `cJSONUtils_ApplyPatches` error codes, plus
+  `get_pointer`/`delete_pointer`, JSON Patch (`apply_patches`, `generate_patches`,
+  `add_patch_to_array`), RFC 7396 merge patch, `sort_object`, and `find_pointer_from_object_to`.
+- **Why:** cJSON reports patch failures via `int` return codes and pointer-walking that can silently
+  miss. The port keeps the same numeric codes (for behavioral parity) but returns them through
+  `Result<_, PatchError>` and does pointer resolution with checked `Vec`/`slice` access, so a bad
+  path is a handled error rather than undefined behavior.
+
 ---
 
 ## Open / to be decided
@@ -103,5 +113,4 @@ This file is maintained incrementally as the port progresses.
 - How the C test harness (Unity `TEST_ASSERT_*`) maps onto Rust `#[test]` without editing the
   original `.c` files (likely a translation layer under `tests/port/`).
 - Printer (`print`/`print_unformatted`) — cJSON's `cJSON_Print`/`cJSON_PrintUnformatted`.
-- JSON Pointer/Patch and the `utils` helpers — described in the `lib.rs` docs but not yet built.
 - `src/main.rs` for the CLI binary declared in `Cargo.toml`.
