@@ -1,10 +1,11 @@
-//! JSON values and the value-level behavior shared by every later module.
+//! JSON values, plus the value-level behavior every other module ends up
+//! needing.
 //!
-//! cJSON preserves object member order and permits duplicate member names.
-//! `Vec<Member>` preserves both properties, unlike a map.
+//! cJSON keeps object members in insertion order and happily allows duplicate
+//! names. A `Vec<Member>` preserves both of those, which a hash map can't.
 
-/// The JSON kind of a [`Value`]. `Raw` is retained for cJSON compatibility:
-/// it represents pre-serialized JSON supplied by a caller.
+/// What kind of JSON this [`Value`] holds. `Raw` is there for cJSON
+/// compatibility: a caller handing us JSON that's already been serialized.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Kind {
     Invalid,
@@ -30,11 +31,11 @@ impl Member {
     }
 }
 
-/// The safe internal representation of a cJSON node.
+/// Our safe stand-in for a cJSON node.
 ///
-/// There are no parent, next, or previous pointers here. `Vec` gives Rust
-/// ownership of children, and the future FFI layer will adapt this model to
-/// cJSON's public linked-node representation when needed.
+/// No parent/next/previous pointers to juggle — `Vec` simply owns the
+/// children. If we ever need to talk to cJSON's linked-node layout, the FFI
+/// layer can translate between the two.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Invalid,
@@ -85,13 +86,13 @@ impl Value {
     pub fn as_object(&self) -> Option<&[Member]> { match self { Self::Object(members) => Some(members), _ => None } }
     pub fn as_object_mut(&mut self) -> Option<&mut Vec<Member>> { match self { Self::Object(members) => Some(members), _ => None } }
 
-    /// Returns the first member with this exact name, matching cJSON's object
-    /// lookup behavior for objects with duplicate keys.
+    /// Finds the first member with this exact name. An object may repeat a
+    /// key, so this returns whichever match shows up first, like cJSON does.
     pub fn get(&self, name: &str) -> Option<&Value> {
         self.as_object()?.iter().find(|member| member.name == name).map(|member| &member.value)
     }
 
-    /// Returns the first ASCII-case-insensitive member, matching
+    /// Like [`Value::get`], but case-insensitive — the equivalent of
     /// `cJSON_GetObjectItem`.
     pub fn get_case_insensitive(&self, name: &str) -> Option<&Value> {
         self.as_object()?.iter().find(|member| member.name.eq_ignore_ascii_case(name)).map(|member| &member.value)
@@ -102,11 +103,11 @@ impl Value {
     pub fn is_empty(&self) -> Option<bool> { self.len().map(|length| length == 0) }
 }
 
-/// A deep clone, mirroring `cJSON_Duplicate`.
+/// A clone of a value, mirroring `cJSON_Duplicate`.
 ///
-/// `recursive` corresponds to cJSON's `recurse` flag. With it disabled, arrays
-/// and objects keep their containers but lose their children, exactly as cJSON
-/// duplicates a node without recursing into it.
+/// `recursive` is cJSON's `recurse` flag: turn it off and an array or object
+/// keeps its container but drops its children, just like cJSON does when it
+/// copies a node shallowly.
 pub fn duplicate(value: &Value, recursive: bool) -> Value {
     if !recursive {
         return match value {
@@ -125,13 +126,12 @@ pub fn duplicate(value: &Value, recursive: bool) -> Value {
     }
 }
 
-/// Deep structural equality mirroring `cJSON_Compare`.
+/// Deep structural equality, the port of `cJSON_Compare`.
 ///
-/// Objects are compared as unordered key/value sets: like cJSON, both sides
-/// are first sorted by member name (a copy here, since Rust cannot mutate the
-/// inputs) and then compared member by member. Numbers compare with
-/// `compare_double`, strings compare byte-for-byte, and arrays are compared
-/// element by element.
+/// Objects compare as unordered key/value sets: we sort both sides by member
+/// name (on a copy, since Rust won't let us mutate the inputs) and walk them
+/// together. Numbers go through `compare_double`, strings byte-for-byte, and
+/// arrays element by element.
 pub fn compare(left: &Value, right: &Value, case_sensitive: bool) -> bool {
     if std::mem::discriminant(left) != std::mem::discriminant(right) {
         return false;
@@ -185,22 +185,22 @@ fn compare_member_names(left: &str, right: &str, case_sensitive: bool) -> std::c
     }
 }
 
-/// Creates an array from integers, mirroring `cJSON_CreateIntArray`.
+/// Builds an array of numbers from an integer slice — `cJSON_CreateIntArray`.
 pub fn create_int_array(values: &[i32]) -> Value {
     Value::Array(values.iter().map(|value| Value::Number(*value as f64)).collect())
 }
 
-/// Creates an array from `f32`s, mirroring `cJSON_CreateFloatArray`.
+/// Builds an array of numbers from an `f32` slice — `cJSON_CreateFloatArray`.
 pub fn create_float_array(values: &[f32]) -> Value {
     Value::Array(values.iter().map(|value| Value::Number(*value as f64)).collect())
 }
 
-/// Creates an array from `f64`s, mirroring `cJSON_CreateDoubleArray`.
+/// Builds an array of numbers from an `f64` slice — `cJSON_CreateDoubleArray`.
 pub fn create_double_array(values: &[f64]) -> Value {
     Value::Array(values.iter().map(|value| Value::Number(*value)).collect())
 }
 
-/// Creates an array of strings, mirroring `cJSON_CreateStringArray`.
+/// Builds an array of strings from a string slice — `cJSON_CreateStringArray`.
 pub fn create_string_array(values: &[&str]) -> Value {
     Value::Array(values.iter().map(|value| Value::String((*value).into())).collect())
 }
