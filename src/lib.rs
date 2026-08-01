@@ -6,11 +6,7 @@
 //! operate on that safe model.
 
 mod error;
-mod minify;
-mod mutate;
 mod parser;
-mod printer;
-mod utils;
 mod value;
 
 pub use error::Error;
@@ -18,6 +14,7 @@ pub use value::{
     compare, create_double_array, create_float_array, create_int_array, create_string_array, duplicate, Kind, Member,
     Value,
 };
+pub use parser::parse;
 
 /// cJSON's default maximum nesting level. The parser enforces this when
 /// parsing deeply nested documents.
