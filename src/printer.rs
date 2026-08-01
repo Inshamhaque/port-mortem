@@ -1,18 +1,17 @@
-//! JSON rendering in cJSON's compact and formatted styles.
+//! Turns a [`Value`] back into JSON text, in cJSON's compact or formatted style.
 
 use std::fmt::Write;
 
 use crate::Value;
 
-/// Renders a value using cJSON's tab-indented formatted output.
+/// Prints a value with cJSON's tab-indented formatting.
 ///
-/// Returns `None` for `Value::Invalid`, mirroring cJSON's inability to print
-/// an invalid node.
+/// Returns `None` for `Value::Invalid`, because an invalid node can't be rendered.
 pub fn print(value: &Value) -> Option<String> {
     render(value, true)
 }
 
-/// Renders a value without insignificant whitespace.
+/// Prints a value with no insignificant whitespace.
 pub fn print_unformatted(value: &Value) -> Option<String> {
     render(value, false)
 }
@@ -114,8 +113,8 @@ fn write_string(output: &mut String, value: &str) {
     output.push('"');
 }
 
-/// Reproduces cJSON's 15-significant-digit-first number formatting strategy,
-/// retrying with 17 digits when the shorter representation loses precision.
+/// Formats a number the way cJSON does: try 15 significant digits first, then
+/// bump to 17 if that shorter form would lose precision.
 fn format_number(value: f64) -> String {
     if !value.is_finite() {
         return "null".into();

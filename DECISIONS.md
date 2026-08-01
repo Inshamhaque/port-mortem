@@ -25,10 +25,10 @@ This file is maintained incrementally as the port progresses.
   with memory safety guaranteed. This also targets the **Zero Unsafe** bonus.
 
 ### D2 — Library + CLI binary in one crate
-- **Status:** partially scaffolded (`Cargo.toml` declares `lib` + `bin`; `lib.rs` present,
-  `main.rs` pending)
+- **Status:** decided, `src/main.rs` implemented
 - **What:** Two targets under one crate: a library (`cjson_rs`) exposing the API, and a binary
-  (`cjson-rs`) exposing a CLI for differential testing against the original's CLI behavior.
+  (`cjson-rs`) exposing a CLI with `parse`, `print`, `minify`, `get` (JSON Pointer), and `patch`
+  commands — the substrate for differential testing against the original's CLI behavior.
 - **Why:** The deliverables demand both a runnable artifact and an API surface that the original
   test suite can exercise. The binary is also the substrate for the differential fuzz harness.
 
@@ -106,11 +106,27 @@ This file is maintained incrementally as the port progresses.
   `Result<_, PatchError>` and does pointer resolution with checked `Vec`/`slice` access, so a bad
   path is a handled error rather than undefined behavior.
 
+### D12 — Printer reproduces cJSON's exact rendering, including its number quirks
+- **Status:** decided, `src/printer.rs` implemented (39 unit tests green)
+- **What:** `print` (tab-indented) and `print_unformatted` (compact) mirror `cJSON_Print` /
+  `cJSON_PrintUnformatted`. Numbers go through cJSON's 15-then-17 significant-digit strategy so
+  round-trips match the C output byte-for-byte; non-finite numbers render as `null`, as in cJSON.
+- **Why:** Behavioral equivalence on printer output is scored directly. Reproducing cJSON's exact
+  number formatting (rather than using Rust's default `f64` display) is what keeps `print_*`
+  tests passing unmodified.
+
+### D13 — CLI surface exists for differential testing
+- **Status:** decided, `src/main.rs` implemented
+- **What:** A `cjson-rs` binary with subcommands that read a file or stdin and print or transform
+  JSON, giving a shared, scriptable interface to compare against the original cJSON CLI.
+- **Why:** The scoring wants a one-command runnable artifact and differential fuzz over a shared
+  public API. A thin CLI over the library is the cheapest way to satisfy both.
+
 ---
 
 ## Open / to be decided
 
 - How the C test harness (Unity `TEST_ASSERT_*`) maps onto Rust `#[test]` without editing the
   original `.c` files (likely a translation layer under `tests/port/`).
-- Printer (`print`/`print_unformatted`) — cJSON's `cJSON_Print`/`cJSON_PrintUnformatted`.
-- `src/main.rs` for the CLI binary declared in `Cargo.toml`.
+- `tests/port/` — the Rust-native test suite mirroring the original tests.
+- `fuzz/` harness, `bench/` report, and the `Dockerfile` — build-out for the remaining deliverables.
