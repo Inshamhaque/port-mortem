@@ -8,6 +8,7 @@
 mod error;
 mod parser;
 mod value;
+mod minify;
 
 pub use error::Error;
 pub use value::{
@@ -15,6 +16,7 @@ pub use value::{
     Value,
 };
 pub use parser::parse;
+pub use minify::minify;
 
 /// cJSON's default maximum nesting level. The parser enforces this when
 /// parsing deeply nested documents.
