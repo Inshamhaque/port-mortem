@@ -3,4 +3,4 @@ build
 .git
 .vscode
 fuzz/divergences.txt
-bench
+fuzz/log.txt
