@@ -16,7 +16,15 @@ CC    ?= cc
 STAGING   := build/original-tests
 LIB       := target/release/libcjson_rs.a
 CFLAGS    := -std=c11 -O1 -Wall
+
+# Linking a Rust staticlib pulls in libstd's deps: pthread/dl on glibc, libm
+# everywhere. macOS keeps them all in libSystem, so only -lm is needed there.
+UNAME := $(shell uname -s)
+ifeq ($(UNAME),Linux)
+CJSON_LIB := -L target/release -lcjson_rs -lm -lpthread -ldl
+else
 CJSON_LIB := -L target/release -lcjson_rs -lm
+endif
 
 # The 18 library tests + 3 utils tests from tests/original/CMakeLists.txt.
 UNITY_TESTS := parse_examples parse_number parse_hex4 parse_string parse_array \
@@ -36,7 +44,11 @@ build:
 test:
 	$(CARGO) test
 
-$(LIB): build
+# Build the staticlib only when it is missing, so a prebuilt artifact (e.g. one
+# copied from a Docker builder stage) is reused instead of triggering a cargo
+# run. `make build` still rebuilds explicitly.
+$(LIB):
+	$(CARGO) build --release
 
 # Compile and run the original test suite. Each test binary is the original
 # .c + Unity, linked against the Rust staticlib; fixtures are staged like the

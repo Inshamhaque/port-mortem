@@ -1,4 +1,6 @@
 target
 build
+.git
 .vscode
 fuzz/divergences.txt
+bench
