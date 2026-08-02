@@ -30,7 +30,10 @@ impl<'input> Parser<'input> {
     }
 
     fn skip_whitespace(&mut self) {
-        while matches!(self.input.get(self.position), Some(b' ' | b'\n' | b'\r' | b'\t')) {
+        // cJSON's buffer_skip_whitespace uses isspace(3), whose set is " \t\n\v\f\r".
+        // Reproduce that exactly so the safe core and the FFI layer (and the
+        // original C) accept the same documents.
+        while matches!(self.input.get(self.position), Some(b' ' | b'\n' | b'\r' | b'\t' | b'\x0b' | b'\x0c')) {
             self.position += 1;
         }
     }
@@ -83,7 +86,10 @@ impl<'input> Parser<'input> {
             match byte {
                 b'"' => return Ok(output),
                 b'\\' => self.parse_escape(&mut output)?,
-                0x00..=0x1f => return Err(self.error("unescaped control character in string")),
+                // cJSON copies any non-backslash byte through verbatim, including
+                // raw control characters (RFC 8259 requires them escaped, but the
+                // port keeps cJSON's permissiveness for behavioral parity — see
+                // DECISIONS.md D16).
                 _ if byte.is_ascii() => output.push(byte as char),
                 _ => self.parse_utf8_character(byte, &mut output)?,
             }
@@ -163,52 +169,22 @@ impl<'input> Parser<'input> {
 
     fn parse_number(&mut self) -> Result<Value, Error> {
         let start = self.position;
-        if self.input.get(self.position) == Some(&b'-') {
-            self.position += 1;
-        }
 
-        match self.input.get(self.position) {
-            Some(b'0') => self.position += 1,
-            Some(b'1'..=b'9') => {
-                self.position += 1;
-                self.consume_digits();
-            }
-            _ => return Err(self.error("invalid number")),
+        // cJSON copies every byte from [0-9 + - e E .] into a scratch buffer
+        // and hands it to strtod, which is far more permissive than RFC 8259:
+        // leading zeros ("01" -> 1), a bare fraction ("1." -> 1), and an
+        // exponent without digits ("1e" -> 1, consuming only the "1") all
+        // parse. The parser advances by whatever strtod consumed, not the full
+        // scan. This mirrors parse_c_float in the FFI layer so the safe core
+        // and the C-ABI layer accept the same documents (see DECISIONS.md D16).
+        let mut scan = start;
+        while matches!(self.input.get(scan), Some(b'0'..=b'9' | b'+' | b'-' | b'e' | b'E' | b'.')) {
+            scan += 1;
         }
-
-        if self.input.get(self.position) == Some(&b'.') {
-            self.position += 1;
-            let fraction_start = self.position;
-            self.consume_digits();
-            if self.position == fraction_start {
-                return Err(self.error("fraction requires at least one digit"));
-            }
-        }
-
-        if matches!(self.input.get(self.position), Some(b'e' | b'E')) {
-            self.position += 1;
-            if matches!(self.input.get(self.position), Some(b'+' | b'-')) {
-                self.position += 1;
-            }
-            let exponent_start = self.position;
-            self.consume_digits();
-            if self.position == exponent_start {
-                return Err(self.error("exponent requires at least one digit"));
-            }
-        }
-
-        let source = std::str::from_utf8(&self.input[start..self.position]).expect("number tokens are ASCII");
-        let number = source.parse::<f64>().map_err(|_| self.error("invalid number"))?;
-        if !number.is_finite() {
-            return Err(self.error("number is outside the finite f64 range"));
-        }
-        Ok(Value::Number(number))
-    }
-
-    fn consume_digits(&mut self) {
-        while matches!(self.input.get(self.position), Some(b'0'..=b'9')) {
-            self.position += 1;
-        }
+        let (value, consumed) = parse_c_float(&self.input[start..scan])
+            .ok_or_else(|| self.error("invalid number"))?;
+        self.position = start + consumed;
+        Ok(Value::Number(value))
     }
 
     fn parse_array(&mut self, depth: usize) -> Result<Value, Error> {
@@ -277,6 +253,50 @@ impl<'input> Parser<'input> {
     }
 }
 
+/// The subset of C `strtod` that `parse_number` can produce: optional sign,
+/// digit/dot mantissa, optional exponent. Returns `(value, bytes consumed)`.
+/// Mirrors `parse_c_float` in the FFI layer so both parsers agree. `strtod`
+/// leaves a bare exponent marker unconsumed ("1e" -> (1.0, 1)).
+fn parse_c_float(input: &[u8]) -> Option<(f64, usize)> {
+    let mut pos = 0usize;
+    if matches!(input.get(pos), Some(b'+' | b'-')) {
+        pos += 1;
+    }
+    let mut digits = 0usize;
+    while matches!(input.get(pos), Some(b'0'..=b'9')) {
+        pos += 1;
+        digits += 1;
+    }
+    let mut fraction = 0usize;
+    if input.get(pos) == Some(&b'.') {
+        pos += 1;
+        while matches!(input.get(pos), Some(b'0'..=b'9')) {
+            pos += 1;
+            fraction += 1;
+        }
+    }
+    if digits == 0 && fraction == 0 {
+        return None; // strtod does not advance: parse error
+    }
+    if matches!(input.get(pos), Some(b'e' | b'E')) {
+        let exponent_start = pos;
+        pos += 1;
+        if matches!(input.get(pos), Some(b'+' | b'-')) {
+            pos += 1;
+        }
+        let exponent_digits = pos;
+        while matches!(input.get(pos), Some(b'0'..=b'9')) {
+            pos += 1;
+        }
+        if pos == exponent_digits {
+            pos = exponent_start;
+        }
+    }
+    let token = core::str::from_utf8(&input[..pos]).ok()?;
+    let value = token.parse::<f64>().ok()?;
+    Some((value, pos))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{parse, Member, Value};
@@ -307,10 +327,24 @@ mod tests {
 
     #[test]
     fn rejects_invalid_json_and_exposes_an_offset() {
-        let error = parse(r#"{"a":01}"#).unwrap_err();
+        // .5 and --1 are not value starts / valid numbers even in cJSON
+        // (parse_value only enters a number on '-' or a digit).
+        let error = parse(r#"{"a":.5}"#).unwrap_err();
         assert!(error.offset > 0);
         assert!(parse(r#""\uD800""#).is_err());
         assert!(parse("[1,]").is_err());
         assert!(parse("true false").is_err());
+    }
+
+    #[test]
+    fn numbers_are_as_permissive_as_cjson() {
+        // Leading zeros and bare fractions parse via the strtod-like path,
+        // matching cJSON (DECISIONS.md D16).
+        assert_eq!(parse("01"), Ok(Value::Number(1.0)));
+        assert_eq!(parse("1."), Ok(Value::Number(1.0)));
+        // A bare exponent consumes only the "1" (strtod leaves "e" unconsumed),
+        // so as a standalone document it is rejected by the whole-input
+        // requirement — the same outcome as require_null_terminated=1.
+        assert!(parse("1e").is_err());
     }
 }

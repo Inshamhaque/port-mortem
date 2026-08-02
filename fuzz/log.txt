@@ -1,0 +1,12 @@
+tool:       cjson-rs differential fuzzer (FFI vs safe core)
+timestamp:  2026-08-02T09:46:30.572425+00:00
+duration_s: 60.3
+seed:       0
+oracle_ffi: build/fuzz-driver
+oracle_safe:target/release/cjson-rs
+corpus:     21 files
+total:        13952
+ok:        12306
+divergence:        0
+skip:        1646
+divergence_rate: 0.000000

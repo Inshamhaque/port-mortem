@@ -148,6 +148,34 @@ This file is maintained incrementally as the port progresses.
   tests their C type definitions and giving the linker the Rust implementations. The FFI layer
   (`src/ffi.rs`, wired in via `mod ffi;`) is validated by this suite — its whole purpose.
 
+### D16 — Safe-core parser matches cJSON's permissiveness; differential fuzz is clean
+- **Status:** decided, `src/parser.rs` + `src/ffi.rs` fixed; `fuzz/` harness green
+- **What:** The differential fuzzer (`fuzz/harness.py`, FFI `cJSON_Parse` vs safe `parse`)
+  surfaced four classes where the two implementations disagreed. Three were the safe core being
+  *stricter* than cJSON and were aligned to cJSON:
+  1. **Whitespace set** — cJSON's `buffer_skip_whitespace` uses `isspace(3)` (` \t\n\v\f\r`); the
+     safe parser skipped only ` \t\n\r`.
+  2. **Raw control characters in strings** — cJSON copies any non-backslash byte verbatim; the
+     safe parser rejected bytes `< 0x20`.
+  3. **Number grammar** — cJSON scans `[0-9 + - e E .]` and hands the token to `strtod`, so it
+     accepts leading zeros (`01` → 1), bare fractions (`1.` → 1) and leaves a bare exponent
+     unconsumed (`1e` → 1). The safe parser enforced RFC 8259's grammar. Both parsers now share a
+     `parse_c_float` strtod-subset (`src/ffi.rs`, `src/parser.rs`).
+  The fourth was a real **FFI bug**: `buffer_skip_whitespace` used `<= 32` (treated every control
+  byte as whitespace), accepting documents the original C rejects. It now uses the `isspace` set.
+- **Why:** The north star is behavioral parity with cJSON; "safe" describes memory safety (no
+  `unsafe`, checked access), not spec strictness. Aligning the two parsers means the differential
+  fuzzer is a genuine zero-divergence signal rather than a tally of deliberate strictness.
+- **Residual (documented, handled by the harness):**
+  1. **Whole-input consumption** — `parse` rejects trailing content after one value; `cJSON_Parse`
+     silently ignores it (it does not require null-termination).
+  2. **UTF-8 input domain** — the safe CLI reads stdin as UTF-8 (the safe API takes `&str`); the FFI
+     parses raw bytes.
+  3. **NUL truncation** — `cJSON_Parse` sizes its input with `strlen`, so a NUL byte truncates the
+     document; the safe core is length-based and treats NUL as an ordinary character.
+  The harness classifies all three as accepted behavior. Verified: 60s+ runs across multiple seeds
+  report **0 divergences**.
+
 ---
 
 ## Open / to be decided

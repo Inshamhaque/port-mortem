@@ -1,3 +1,5 @@
 target
+build
 .vscode
 Cargo.lock
+fuzz/divergences.txt

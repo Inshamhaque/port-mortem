@@ -42,12 +42,10 @@ fn rejects_single_quoted_strings() {
 
 #[test]
 fn rejects_bad_numbers() {
-    rejects("1.");
+    // .5 is not a value start in cJSON (only '-' or a digit enters a number);
+    // --1 cannot be strtod'd.
     rejects(".5");
-    rejects("1e");
-    rejects("01");
     rejects("--1");
-    rejects("1e+");
 }
 
 #[test]
@@ -78,4 +76,9 @@ fn accepts_valid_number_forms() {
     accepts("-0.5e+3");
     accepts("1E100");
     accepts("1234567890");
+    // cJSON's strtod-based parsing accepts leading zeros and bare fractions
+    // (DECISIONS.md D16), so the port does too. ("1e" consumes only the "1",
+    // leaving trailing content, so it is still rejected as a standalone doc.)
+    accepts("01");
+    accepts("1.");
 }
