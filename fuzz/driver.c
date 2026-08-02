@@ -1,21 +1,15 @@
 /*
- * Differential-fuzz oracle over the FFI layer.
+ * One half of the differential fuzzer: read one JSON document on stdin, parse
+ * it through the FFI layer (cJSON_ParseWithOpts, the same call cJSON_Parse
+ * makes), and print a verdict line fuzz/harness.py diffs against the safe core:
  *
- * Reads one JSON document from stdin, parses it with cJSON_ParseWithOpts
- * (require_null_terminated = 0, exactly what cJSON_Parse does) and prints a
- * canonical, line-oriented verdict that fuzz/harness.py diffs against the safe
- * Rust core:
- *
- *   OK <consumed> <compact JSON>   -- parse succeeded, <consumed> bytes used
+ *   OK <consumed> <compact JSON>   -- parsed OK, <consumed> bytes used
  *   ERR <offset>                   -- parse failed, error offset (-1 if unknown)
  *   DRIVER_ERR <reason>            -- oracle itself broke (skip this input)
  *
- * The <consumed> byte count lets the harness treat cJSON's "ignore trailing
- * content" semantics explicitly instead of letting them look like divergences
- * against the safe parser, which deliberately requires whole-input consumption.
- *
- * Built from libcjson_rs.a (the Rust FFI layer), so this oracle exercises the
- * same C symbols the original test suite calls.
+ * <consumed> matters because cJSON_Parse ignores trailing garbage after the
+ * first value, whereas the safe parser wants the whole input. Linking against
+ * libcjson_rs.a means this exercises the same C symbols the original tests use.
  */
 
 #include "cJSON.h"

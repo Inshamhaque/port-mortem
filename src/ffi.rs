@@ -433,11 +433,8 @@ unsafe fn buffer_skip_whitespace(buffer: *mut parse_buffer) -> *mut parse_buffer
     if !can_access_at_index(buffer, 0) {
         return buffer;
     }
-    // cJSON skips isspace(3) bytes: space, \t, \n, \v, \f, \r — NOT every byte
-    // below 0x20. A stray control byte like \x01 is therefore not whitespace
-    // and must be handed to the value parser (which rejects it). Caught by the
-    // differential fuzzer: the old `<= 32` accepted documents the original C
-    // rejects.
+    // cJSON treats " \t\n\v\f\r" as whitespace, nothing else. The old `<= 32`
+    // here let stray control bytes through that the real cJSON rejects.
     while can_access_at_index(buffer, 0)
         && matches!(*buffer_at_offset(buffer), b' ' | b'\t' | b'\n' | b'\x0b' | b'\x0c' | b'\r')
     {

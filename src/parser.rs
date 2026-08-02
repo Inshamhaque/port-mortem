@@ -30,9 +30,7 @@ impl<'input> Parser<'input> {
     }
 
     fn skip_whitespace(&mut self) {
-        // cJSON's buffer_skip_whitespace uses isspace(3), whose set is " \t\n\v\f\r".
-        // Reproduce that exactly so the safe core and the FFI layer (and the
-        // original C) accept the same documents.
+        // cJSON calls isspace(3), so \v and \f count as whitespace too.
         while matches!(self.input.get(self.position), Some(b' ' | b'\n' | b'\r' | b'\t' | b'\x0b' | b'\x0c')) {
             self.position += 1;
         }
@@ -86,10 +84,8 @@ impl<'input> Parser<'input> {
             match byte {
                 b'"' => return Ok(output),
                 b'\\' => self.parse_escape(&mut output)?,
-                // cJSON copies any non-backslash byte through verbatim, including
-                // raw control characters (RFC 8259 requires them escaped, but the
-                // port keeps cJSON's permissiveness for behavioral parity — see
-                // DECISIONS.md D16).
+                // cJSON copies anything that isn't a backslash straight through,
+                // raw control bytes included.
                 _ if byte.is_ascii() => output.push(byte as char),
                 _ => self.parse_utf8_character(byte, &mut output)?,
             }
@@ -170,13 +166,9 @@ impl<'input> Parser<'input> {
     fn parse_number(&mut self) -> Result<Value, Error> {
         let start = self.position;
 
-        // cJSON copies every byte from [0-9 + - e E .] into a scratch buffer
-        // and hands it to strtod, which is far more permissive than RFC 8259:
-        // leading zeros ("01" -> 1), a bare fraction ("1." -> 1), and an
-        // exponent without digits ("1e" -> 1, consuming only the "1") all
-        // parse. The parser advances by whatever strtod consumed, not the full
-        // scan. This mirrors parse_c_float in the FFI layer so the safe core
-        // and the C-ABI layer accept the same documents (see DECISIONS.md D16).
+        // cJSON scoops up every byte in [0-9 + - e E .] and lets strtod sort it
+        // out, so "01", "1." and "1e" all parse. We advance by whatever strtod
+        // actually consumed — "1e" eats only the "1".
         let mut scan = start;
         while matches!(self.input.get(scan), Some(b'0'..=b'9' | b'+' | b'-' | b'e' | b'E' | b'.')) {
             scan += 1;
@@ -253,10 +245,9 @@ impl<'input> Parser<'input> {
     }
 }
 
-/// The subset of C `strtod` that `parse_number` can produce: optional sign,
-/// digit/dot mantissa, optional exponent. Returns `(value, bytes consumed)`.
-/// Mirrors `parse_c_float` in the FFI layer so both parsers agree. `strtod`
-/// leaves a bare exponent marker unconsumed ("1e" -> (1.0, 1)).
+/// The strtod subset both parsers share: optional sign, mantissa, exponent.
+/// Returns `(value, bytes consumed)`; a bare exponent marker is left over
+/// ("1e" -> (1.0, 1)).
 fn parse_c_float(input: &[u8]) -> Option<(f64, usize)> {
     let mut pos = 0usize;
     if matches!(input.get(pos), Some(b'+' | b'-')) {
@@ -327,8 +318,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_json_and_exposes_an_offset() {
-        // .5 and --1 are not value starts / valid numbers even in cJSON
-        // (parse_value only enters a number on '-' or a digit).
+        // cJSON only starts a number on '-' or a digit, so .5 and --1 still fail.
         let error = parse(r#"{"a":.5}"#).unwrap_err();
         assert!(error.offset > 0);
         assert!(parse(r#""\uD800""#).is_err());
@@ -338,13 +328,11 @@ mod tests {
 
     #[test]
     fn numbers_are_as_permissive_as_cjson() {
-        // Leading zeros and bare fractions parse via the strtod-like path,
-        // matching cJSON (DECISIONS.md D16).
+        // Leading zeros and bare fractions parse, same as cJSON.
         assert_eq!(parse("01"), Ok(Value::Number(1.0)));
         assert_eq!(parse("1."), Ok(Value::Number(1.0)));
-        // A bare exponent consumes only the "1" (strtod leaves "e" unconsumed),
-        // so as a standalone document it is rejected by the whole-input
-        // requirement — the same outcome as require_null_terminated=1.
+        // A bare exponent eats just the "1"; the leftover "e" trips the
+        // whole-input check, same as require_null_terminated=1.
         assert!(parse("1e").is_err());
     }
 }

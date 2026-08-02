@@ -1,25 +1,17 @@
 #!/usr/bin/env python3
-"""Differential fuzzer for the cJSON port.
+"""Differential fuzzer: make the FFI and the safe core parse the same JSON.
 
-Feeds the same input to two independent implementations of the same algorithm:
+The FFI oracle (fuzz/driver.c, linked against libcjson_rs.a) and the safe
+`cjson-rs print -` CLI each parse the same input; we compare parse-status and
+the printed bytes. Mismatches go to --divergences, the run summary to --log.
 
-  * the FFI oracle  -- fuzz/driver.c linked against libcjson_rs.a, calling
-                      cJSON_ParseWithOpts + cJSON_PrintUnformatted (the C ABI)
-  * the safe core   -- the `cjson-rs print -` CLI (src/parser.rs + printer.rs)
+Inputs are PRNG-driven and seedable: structured random JSON, byte mutations of
+the original test corpus, and raw random bytes.
 
-and asserts they agree on parse-status and on the printed bytes. Any
-disagreement is written to --divergences and the run is reported in --log.
-
-Input space (all PRNG-driven, seedable):
-  * structured random JSON documents (arbitrary nesting/values)
-  * byte-level mutations of a corpus (the original test inputs + generated docs)
-  * raw random bytes
-
-cJSON's cJSON_Parse deliberately ignores trailing content after the first value
-(require_null_terminated = 0). The safe parser instead requires the whole input
-to be one value. The harness normalizes this documented difference away: when
-the FFI oracle consumes fewer bytes than the input, the safe core may reject
-the input or accept it with equal output; that is not a divergence.
+cJSON_Parse ignores trailing content after the first value; the safe parser
+requires the whole input. The harness accounts for that: when the FFI oracle
+consumes fewer bytes than the input, either safe outcome (accept with equal
+output, or reject) counts as a match.
 """
 
 import argparse
@@ -182,9 +174,8 @@ def run_safe(cli, payload):
     if proc.returncode == 0:
         return ("OK", proc.stdout.decode("utf-8", "replace").rstrip("\n"))
     err = proc.stderr.decode("utf-8", "replace").strip()
-    # The safe core's API takes &str, so it cannot represent invalid UTF-8 at
-    # all; those inputs are outside its domain (the FFI oracle works on raw
-    # bytes). Report them as SKIP, not as a parse divergence.
+    # The safe API takes &str, so invalid UTF-8 never reaches it; the FFI
+    # oracle works on raw bytes. Treat those as SKIP, not a divergence.
     if "did not contain valid UTF-8" in err:
         return ("SKIP", "invalid UTF-8 input")
     return ("ERR", err)
@@ -198,9 +189,8 @@ def classify(ffi, safe, payload):
     if ffi[0] == "ERR":
         if safe[0] == "OK":
             if b"\x00" in payload:
-                # cJSON_Parse computes its length with strlen(), so it truncates
-                # at the first NUL; the safe core is length-based and handles
-                # NUL as an ordinary character. Documented divergence, accepted.
+                # cJSON_Parse sizes its input with strlen(), truncating at the
+                # first NUL; the safe core is length-based. Documented, accepted.
                 return ("ok", None)
             return ("divergence", "ffi rejected but safe core accepted")
         return ("ok", None)
@@ -209,7 +199,7 @@ def classify(ffi, safe, payload):
     if safe[0] == "ERR":
         if consumed >= payload_len:
             return ("divergence", f"ffi fully consumed but safe core rejected: {safe[1]}")
-        # cJSON ignores trailing content; safe core rejects it (documented D15).
+        # cJSON ignores trailing content; safe core rejects it (documented).
         return ("ok", None)
     _, safe_out = safe
     if ffi_out != safe_out:

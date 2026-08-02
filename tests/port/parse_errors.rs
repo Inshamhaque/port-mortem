@@ -1,8 +1,7 @@
-//! Parse-rejection coverage mirroring the spirit of the original parse tests
+//! Parse-rejection coverage in the spirit of the original parse tests
 //! (`parse_value.c`, `parse_with_opts.c`): malformed documents must be
-//! rejected with a nonzero error offset. Offsets are asserted only as nonzero
-//! because the safe parser reports its own offsets (see DECISIONS.md D3) and
-//! does not promise byte-identical positions to cJSON's global error pointer.
+//! rejected, with an error offset that points into the input (the safe
+//! parser reports its own offsets, not cJSON's global error pointer).
 
 use cjson_rs::parse;
 
@@ -76,9 +75,8 @@ fn accepts_valid_number_forms() {
     accepts("-0.5e+3");
     accepts("1E100");
     accepts("1234567890");
-    // cJSON's strtod-based parsing accepts leading zeros and bare fractions
-    // (DECISIONS.md D16), so the port does too. ("1e" consumes only the "1",
-    // leaving trailing content, so it is still rejected as a standalone doc.)
+    // cJSON accepts leading zeros and bare fractions, so we do too. ("1e" eats
+    // only the "1", leaving trailing content, so it's still rejected standalone.)
     accepts("01");
     accepts("1.");
 }
