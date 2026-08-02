@@ -389,8 +389,13 @@ fn create_patches(out: &mut Vec<Value>, path: &str, from: &Value, to: &Value, ca
             for index in 0..shared {
                 create_patches(out, &format!("{path}/{index}"), &from_values[index], &to_values[index], case_sensitive);
             }
-            for index in shared..from_values.len() {
-                push_remove(out, path, &index.to_string());
+            // Faithful to cJSON_Utils.c `create_patches`: the remove-leftover
+            // loop does NOT increment `index`, so every leftover removal targets
+            // the same position (`shared`). Each removal shifts the next element
+            // down into that slot, so a contiguous tail is deleted correctly and
+            // the patch applies cleanly.
+            for _ in shared..from_values.len() {
+                push_remove(out, path, &shared.to_string());
             }
             for index in shared..to_values.len() {
                 push_add(out, path, "-", &to_values[index]);

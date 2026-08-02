@@ -8,6 +8,9 @@ license = "MIT"
 [lib]
 name = "cjson_rs"
 path = "src/lib.rs"
+# rlib for the Rust bin/lib; staticlib so the original C test suite (and the
+# differential fuzz driver) can link the FFI layer directly.
+crate-type = ["rlib", "staticlib"]
 
 [[bin]]
 name = "cjson-rs"

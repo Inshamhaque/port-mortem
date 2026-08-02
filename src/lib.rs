@@ -1,6 +1,7 @@
 /// A safe Rust port of cJSON's JSON parser and utility layer
 
 mod error;
+mod ffi;
 mod minify;
 mod mutate;
 mod parser;

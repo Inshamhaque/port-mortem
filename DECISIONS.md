@@ -122,11 +122,37 @@ This file is maintained incrementally as the port progresses.
 - **Why:** The scoring wants a one-command runnable artifact and differential fuzz over a shared
   public API. A thin CLI over the library is the cheapest way to satisfy both.
 
+### D14 — `GeneratePatches` array removals reuse one index, faithfully
+- **Status:** decided, fixed in `src/utils.rs` (`create_patches`, array case)
+- **What:** When diffing arrays, cJSON_Utils.c `create_patches` deletes the tail of `from` in a loop
+  that **does not increment its index** — every leftover removal is generated against the *same*
+  array position (the count of shared leading elements). The port had incremented the index, so a
+  shrink like `[1,2,3,4]` → `[1,3]` produced `remove /2, remove /3`; applying that removes `/3` after
+  the array had shrunk, failing with `cJSONUtils_ErrPatchResult` (13). The port now reuses the index,
+  emitting `remove /2, remove /2`, which applies cleanly (each removal shifts the next element into
+  the slot). Caught by the unmodified `json_patch_tests` ("test repeated removes", generate pass).
+- **Why:** Behavioral parity with the original *output* (the generated patch) and with the original's
+  ability to round-trip generate→apply. The quirk is safe: same-index removals are exactly right for
+  deleting a contiguous tail.
+
+### D15 — C-ABI test harness: original suite drives the Rust FFI via a shim
+- **Status:** decided, `tests/cJSON.h`, `tests/cJSON.c`, `tests/cJSON_Utils.h`, `Makefile`
+- **What:** The original `.c` tests `#include "../cJSON.c"` and `"../cJSON_Utils.h"` (single-file
+  style). The build replaces the real library source with a shim that only *declares* the C surface:
+  the `cJSON` struct + constants + macros (`cJSON.h`, faithful to v1.7.19), the cJSON.c-internal
+  structs `internal_hooks`/`parse_buffer`/`printbuffer` plus `extern` for every exported symbol
+  (`cJSON.c`), and the `cJSONUtils_*` externs (`cJSON_Utils.h`). The `Makefile` compiles each test
+  against `tests/original/unity` and links `libcjson_rs.a` (`crate-type = ["rlib","staticlib"]`),
+  staging `inputs/` + `json-patch-tests/` like the original CMake. All 21 binaries pass unmodified.
+- **Why:** Keeps `tests/original/` byte-identical to the kickoff hash while giving the white-box
+  tests their C type definitions and giving the linker the Rust implementations. The FFI layer
+  (`src/ffi.rs`, wired in via `mod ffi;`) is validated by this suite — its whole purpose.
+
 ---
 
 ## Open / to be decided
 
-- How the C test harness (Unity `TEST_ASSERT_*`) maps onto Rust `#[test]` without editing the
-  original `.c` files (likely a translation layer under `tests/port/`).
-- `tests/port/` — the Rust-native test suite mirroring the original tests.
-- `fuzz/` harness, `bench/` report, and the `Dockerfile` — build-out for the remaining deliverables.
+- `tests/port/` — Rust-native integration tests mirroring the original suite (safe-API mirrors of
+  parse/print/minify/compare/utils; the FFI itself is covered by D15's harness).
+- `fuzz/` differential harness (FFI vs safe core) + `bench/` methodology/results + `Dockerfile` +
+  `README.md` — remaining build-out, tracked in the todo list.
