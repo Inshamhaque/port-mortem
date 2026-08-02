@@ -1,0 +1,30 @@
+{
+  "generated_at_utc": "2026-08-02T09:49:57Z",
+  "machine": {
+    "os": "macOS-15.6.1-arm64-arm-64bit",
+    "cpu": "Apple M2",
+    "cores": 8,
+    "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14) (Homebrew)",
+    "cc": "Apple clang version 17.0.0 (clang-1700.0.13.5)"
+  },
+  "profile": {
+    "codegen_units": 1,
+    "lto": true,
+    "strip": true
+  },
+  "metrics": {
+    "throughput_docs_per_s": 41547.6,
+    "parse_print_p50_us": 1.1,
+    "parse_print_p99_us": 167.4,
+    "parse_print_mean_us": 24.0,
+    "latency_samples": 20000,
+    "throughput_duration_s": 3.0,
+    "corpus_docs": 7,
+    "corpus_bytes": 43432,
+    "startup_p50_ms": 1.797,
+    "startup_p99_ms": 3.063,
+    "startup_mean_ms": 2.574,
+    "startup_samples": 200,
+    "peak_rss_mb": 59.2
+  }
+}

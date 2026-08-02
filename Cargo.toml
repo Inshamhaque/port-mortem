@@ -16,6 +16,10 @@ crate-type = ["rlib", "staticlib"]
 name = "cjson-rs"
 path = "src/main.rs"
 
+[[bin]]
+name = "bench"
+path = "bench/bench.rs"
+
 # Rust-native integration tests under tests/port/ mirroring the original C suite.
 # (Explicit [[test]] targets because Cargo only auto-discovers tests directly
 # under tests/, and tests/original/ is C, kept untouched for the kickoff hash.)
