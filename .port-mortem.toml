@@ -13,3 +13,11 @@ suite_hash = "e12e9a6c5ae59e313c9587367574a9412eaed55db7f38690b68f667673b032f5"
 
 # Hash of the SHA256SUMS manifest (path + hash listing). Self-documenting proof.
 manifest_hash = "ffe834582a009b3d14e096ee9e3b7a31b453763e6b6bc4cd41a1cf47f1601658"
+
+[results]
+# Outcome, filled in as the port completes. Re-verify with the Makefile targets.
+original_suite = "21/21 pass against the Rust FFI (make test-original)"
+rust_tests = "40 lib + 5 CLI + 41 tests/port (cargo test)"
+fuzz = "60s+ differential run, zero divergences (make fuzz; fuzz/log.txt)"
+bench = "see bench/results.json (make bench)"
+docker = "docker build runs the original suite as a parity gate"
