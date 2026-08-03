@@ -4,3 +4,6 @@ build
 __pycache__/
 *.pyc
 fuzz/divergences.txt
+presentation/
+demo/
+.DS_store
